@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mécanismes au foyer – faille, sphère focale, coupe et ballon</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:#f6f5f1;color:#1d1d1f}
+  header{padding:16px 22px 4px}
+  h1{font-size:21px;margin:0 0 4px}
+  header p{margin:0;color:#555;font-size:14px;max-width:950px;line-height:1.45}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 22px 4px}
+  .bar button{border:1px solid #c8c8c8;background:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px}
+  .bar button.on{background:#1d1d1f;color:#fff;border-color:#1d1d1f}
+  .bar label{font-size:13px;margin-left:10px}
+  .sliders{display:flex;flex-wrap:wrap;gap:18px;padding:4px 22px;font-size:13px;color:#444;align-items:center}
+  .sliders label{display:flex;gap:8px;align-items:center}
+  .sliders input[type=range]{width:160px}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;padding:4px 22px;font-size:13px;color:#333}
+  .sw{display:inline-block;width:14px;height:14px;border:1px solid #555;vertical-align:-2px;margin-right:5px;border-radius:3px}
+  .line{display:inline-block;width:22px;height:0;border-top:3px solid #e8590c;vertical-align:3px;margin-right:5px}
+  .line.aux{border-top:2px dashed #6b7280}
+  .stage{margin:6px 22px;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:8px}
+  canvas{width:100%;height:auto;display:block;touch-action:none}
+  #scene,#proj{cursor:grab}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .main{flex:3 1 520px}.side{flex:1 1 220px;max-width:340px;border-left:1px solid #eee;padding-left:10px}
+  .sideT{font-weight:700;font-size:14px;margin:4px 0}.sideP{font-size:12px;color:#555;line-height:1.4}
+  .hint{text-align:center;font-size:12px;color:#777;margin:2px 0 4px}
+  .explain{margin:8px 22px 4px;background:#fff;border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.5;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .compare{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:8px 22px 24px}
+  .mini{background:#fff;border-radius:12px;padding:10px;text-align:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08);border:2px solid transparent}
+  .mini.on{border-color:#1d1d1f}
+  .mini canvas{max-width:150px;margin:0 auto}
+  .mini div{font-size:13px;margin-top:4px;font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mécanismes au foyer : la faille, la sphère focale, la coupe et le ballon</h1>
+  <p>Le séisme naît au <b>foyer</b>, sur le plan de faille. Autour de lui, une sphère imaginaire est découpée en 4 quadrants par le plan de faille et le plan auxiliaire. Dans les quadrants <b>noirs</b>, le premier mouvement de l'onde P est une poussée (<b>compression</b>) ; dans les <b>blancs</b>, c'est une traction (<b>dilatation</b>). Ici, chaque point des blocs est colorié selon la direction dans laquelle il se trouve par rapport au foyer : on voit donc les quadrants dans tout le volume. Le compartiment supérieur (toit) est décalé selon le jeu de la faille.</p>
+</header>
+
+<div class="bar" id="presets">
+  <button data-k="normale">Faille normale</button>
+  <button data-k="inverse">Faille inverse</button>
+  <button data-k="decro">Décrochement</button>
+    <label><input type="checkbox" id="rays" checked> flèches de premier mouvement</label>
+</div>
+<div class="sliders">
+  <label>Pendage <input type="range" id="dip" min="15" max="90" step="1"> <span id="dipv"></span></label>
+  <label>Angle de glissement <input type="range" id="rake" min="-180" max="180" step="1"> <span id="rakev"></span></label>
+</div>
+<div class="legend">
+  <span><span class="sw" style="background:#000"></span>compression</span>
+  <span><span class="sw" style="background:#fff"></span>dilatation</span>
+  <span><span class="line"></span>plan de faille</span>
+  <span><span class="line aux"></span>plan auxiliaire</span>
+  <span><b style="color:#1864ab">P</b> axe de raccourcissement · <b style="color:#c92a2a">T</b> axe d'allongement</span>
+  <span><b style="color:#2f9e44">➜</b> mouvement des compartiments</span>
+  <span><b>➜</b> poussée · <b style="color:#e03131">➜</b> traction (1er mouvement de l'onde P)</span>
+</div>
+
+<div class="stage">
+  <div class="row">
+    <div class="main"><canvas id="scene" width="1000" height="700"></canvas></div>
+    <div class="side"><div class="sideT">Comment on obtient le ballon</div><canvas id="proj" width="360" height="520"></canvas>
+      <div class="sideP">Le centre bleu (rai qui part tout droit vers le bas) arrive au centre du ballon ; le bord de la cuvette (rais horizontaux) arrive au bord du ballon.</div></div>
+  </div>
+  <div class="hint">Fais tourner les deux modèles en glissant la souris ou le doigt sur l'un d'eux</div>
+</div>
+
+<div class="explain" id="explain"></div>
+<div class="compare" id="compare"></div>
+
+<script>
+const D2R=Math.PI/180;
+const BLACK=[0,0,0], WHITE=[255,255,255];
+const PRESETS={
+  normale:{nom:"Faille normale",dip:45,rake:-90},
+  inverse:{nom:"Faille inverse",dip:45,rake:90},
+  decro:{nom:"Décrochement sénestre",dip:90,rake:0}
+};
+let S={dip:45,rake:-90,yaw:-50*D2R,pitch:22*D2R,opaque:false,rays:true,key:"normale"};
+
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,k)=>[a[0]*k,a[1]*k,a[2]*k];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(...a)||1;return mul(a,1/l)};
+
+// Repère : x = Est, y = Nord, z = Haut. Faille de direction N-S, plongeant vers l'Est.
+function geom(dip,rake){
+  const d=dip*D2R,l=rake*D2R;
+  const n=[Math.sin(d),0,Math.cos(d)];
+  const s=[0,1,0], dd=[Math.cos(d),0,-Math.sin(d)];
+  const sl=add(mul(s,Math.cos(l)),mul(dd,-Math.sin(l)));     // glissement du compartiment Est (toit)
+  return {n,d:sl,P:norm(sub(n,sl)),T:norm(add(n,sl))};
+}
+const amp=(r,g)=>2*dot(r,g.n)*dot(r,g.d);                     // > 0 : compression
+const pol=(r,g)=>amp(r,g)>0?BLACK:WHITE;
+
+/* ---------- scène ---------- */
+const mainCv=document.getElementById("scene"),miniCv=document.getElementById("proj");
+let ctx,W,H,SC,CEN;
+function useView(cv,sc,cen){ctx=cv.getContext("2d");W=cv.width;H=cv.height;SC=sc;CEN=cen;}
+const X0=-2.3,X1=2.3,Y0=-1.5,Y1=1.5,Z0=-2.4,Z1=0,ZF=-1.15, DR=0.7, F=[0,0,ZF], OFF=0.42, GREEN="#2f9e44";
+const off=document.createElement("canvas"),octx=off.getContext("2d");
+
+function toView(w){
+  const cy=Math.cos(S.yaw),sy=Math.sin(S.yaw),cp=Math.cos(S.pitch),sp=Math.sin(S.pitch);
+  const x1=w[0]*cy-w[1]*sy, y1=w[0]*sy+w[1]*cy, up=w[2], tw=-y1;
+  return [x1, up*cp-tw*sp, tw*cp+up*sp];
+}
+function toWorld(v){
+  const cy=Math.cos(S.yaw),sy=Math.sin(S.yaw),cp=Math.cos(S.pitch),sp=Math.sin(S.pitch);
+  const up=v[1]*cp+v[2]*sp, tw=-v[1]*sp+v[2]*cp, x1=v[0], y1=-tw;
+  return [x1*cy+y1*sy, -x1*sy+y1*cy, up];
+}
+const proj=p=>{const v=toView(sub(p,CEN));return [W/2+SC*v[0],H/2-SC*v[1],v[2]];};
+
+function arrow2(x1,y1,x2,y2,col,w=2.5,head=10){
+  const a=Math.atan2(y2-y1,x2-x1);
+  ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=w;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2-Math.cos(a)*head*0.6,y2-Math.sin(a)*head*0.6);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-head*Math.cos(a-0.42),y2-head*Math.sin(a-0.42));
+  ctx.lineTo(x2-head*Math.cos(a+0.42),y2-head*Math.sin(a+0.42));ctx.closePath();ctx.fill();
+}
+function arrow3(p,q,col,w,head,halo){const A=proj(p),B=proj(q);
+  if(halo)arrow2(A[0],A[1],B[0],B[1],"#fff",w+3,head+3);
+  arrow2(A[0],A[1],B[0],B[1],col,w,head);}
+function label(t,x,y,col="#1d1d1f",size=14,bold=true){
+  ctx.font=(bold?"700 ":"")+size+"px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.lineWidth=4;ctx.strokeStyle="rgba(255,255,255,.92)";ctx.strokeText(t,x,y);ctx.fillStyle=col;ctx.fillText(t,x,y);
+}
+function label3(t,p,col,size,bold){const P=proj(p);label(t,P[0],P[1],col,size,bold);}
+function line3(pts,col,w,dash=[]){ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(dash);ctx.beginPath();
+  pts.forEach((p,i)=>{const P=proj(p);i?ctx.lineTo(P[0],P[1]):ctx.moveTo(P[0],P[1]);});ctx.stroke();ctx.setLineDash([]);}
+function basis(nrm){const ref=Math.abs(nrm[2])<0.9?[0,0,1]:[1,0,0];const a=norm(cross(nrm,ref));return [a,cross(nrm,a)];}
+
+/* --- blocs : section x-z découpée par la faille, extrudée selon y ; le toit est décalé selon le glissement --- */
+function clip(poly,f){const out=[];
+  for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],fa=f(a),fb=f(b);
+    if(fa>=0)out.push(a);
+    if((fa>=0)!==(fb>=0)){const t=fa/(fa-fb);out.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}}
+  return out;}
+function buildFaces(g,u){
+  const fz=p=>g.n[0]*p[0]+g.n[2]*(p[1]-ZF);
+  const rect=[[X0,Z0],[X1,Z0],[X1,Z1],[X0,Z1]];
+  const hang=clip(rect,p=>fz(p)), foot=clip(rect,p=>-fz(p));
+  const faces=[];
+  const prism=(poly,o)=>{
+    const P=(x,y,z)=>[x+o[0],y+o[1],z+o[2]];
+    faces.push({pts:poly.map(p=>P(p[0],Y0,p[1]))});
+    faces.push({pts:poly.map(p=>P(p[0],Y1,p[1]))});
+    for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];
+      faces.push({pts:[P(a[0],Y0,a[1]),P(b[0],Y0,b[1]),P(b[0],Y1,b[1]),P(a[0],Y1,a[1])],onFault:Math.abs(fz(a))<1e-6&&Math.abs(fz(b))<1e-6});}
+  };
+  prism(foot,[0,0,0]);prism(hang,u);
+  const on=foot.filter(p=>Math.abs(fz(p))<1e-6);
+  const cx=poly=>{const t=poly.filter(p=>Math.abs(p[1])<1e-6);return t.reduce((s,p)=>s+p[0],0)/(t.length||1);};
+  return {faces,hangX:cx(hang),footX:cx(foot),fz,trace:on};
+}
+// face pleine colorée point par point : noir si la direction depuis le foyer est en compression
+function drawTexFace(f,g){
+  const pts=f.pts,P=pts.map(proj),p0=pts[0],ea=sub(pts[1],p0),eb=sub(pts[pts.length-1],p0);
+  const A=P[0],Pa=proj(add(p0,ea)),Pb=proj(add(p0,eb));
+  const ax=Pa[0]-A[0],ay=Pa[1]-A[1],bx=Pb[0]-A[0],by=Pb[1]-A[1],det=ax*by-bx*ay;
+  if(Math.abs(det)<3)return;
+  const nn=norm(cross(ea,eb)),sh=0.8+0.2*Math.abs(dot(nn,norm([-0.4,-0.6,0.8])));
+  const xs=P.map(p=>p[0]),ys=P.map(p=>p[1]);
+  const x0=Math.floor(Math.min(...xs))-1,y0=Math.floor(Math.min(...ys))-1,w=Math.ceil(Math.max(...xs))-x0+2,h=Math.ceil(Math.max(...ys))-y0+2;
+  const id=octx.createImageData(w,h),D=id.data;
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+    const dx=x0+i+.5-A[0],dy=y0+j+.5-A[1],s=(dx*by-bx*dy)/det,t=(ax*dy-ay*dx)/det;
+    const wp=add(p0,add(mul(ea,s),mul(eb,t))),c=amp(sub(wp,F),g)>0?22*sh:255*sh,k=(j*w+i)*4;
+    D[k]=D[k+1]=D[k+2]=c;D[k+3]=255;}
+  off.width=w;off.height=h;octx.putImageData(id,0,0);
+  ctx.save();ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.clip();
+  ctx.drawImage(off,x0,y0);ctx.restore();
+  ctx.strokeStyle="#7a7a7a";ctx.lineWidth=1.3;ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.stroke();
+}
+
+/* --- disque plat texturé (coupe ou ballon) --- */
+function drawDisk(c,e1,e2,r,fn){
+  const P0=proj(c),Pa=proj(add(c,mul(e1,r))),Pb=proj(add(c,mul(e2,r)));
+  const ax=Pa[0]-P0[0],ay=Pa[1]-P0[1],bx=Pb[0]-P0[0],by=Pb[1]-P0[1],det=ax*by-bx*ay;
+  if(Math.abs(det)<2)return;
+  const ex=Math.abs(ax)+Math.abs(bx),ey=Math.abs(ay)+Math.abs(by);
+  const x0=Math.floor(P0[0]-ex)-1,y0=Math.floor(P0[1]-ey)-1,w=Math.ceil(2*ex)+3,h=Math.ceil(2*ey)+3;
+  const id=octx.createImageData(w,h),D=id.data,aa=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+    const dx=x0+i+.5-P0[0],dy=y0+j+.5-P0[1],u=(dx*by-bx*dy)/det,v=(ax*dy-ay*dx)/det,q=Math.hypot(u,v);
+    if(q>1)continue;const col=fn(u,v,q),k=(j*w+i)*4;
+    D[k]=col[0];D[k+1]=col[1];D[k+2]=col[2];D[k+3]=Math.min(1,(1-q)*aa)*255;}
+  off.width=w;off.height=h;octx.putImageData(id,0,0);ctx.drawImage(off,x0,y0);
+  ringLine(c,e1,e2,r,"#000",2);
+}
+function ringLine(c,e1,e2,r,col,w,dash){const ring=[];for(let k=0;k<=72;k++){const t=k/72*2*Math.PI;ring.push(add(c,add(mul(e1,r*Math.cos(t)),mul(e2,r*Math.sin(t)))));}
+  line3(ring,col,w,dash||[]);}
+const local=(c,e1,e2,r,u,v)=>add(c,add(mul(e1,r*u),mul(e2,r*v)));
+
+/* --- projection de Schmidt (hémisphère inférieur) --- */
+function schmidtDir(u,v){const r=Math.hypot(u,v),i=2*Math.asin(Math.min(1,r)/Math.SQRT2),hs=Math.sin(i);
+  return r>1e-9?[hs*u/r,hs*v/r,-Math.cos(i)]:[0,0,-1];}
+function projPt(w){if(w[2]>0)w=mul(w,-1);const i=Math.acos(Math.max(-1,Math.min(1,-w[2]))),r=Math.SQRT2*Math.sin(i/2),h=Math.hypot(w[0],w[1])||1;
+  return [r*w[0]/h,r*w[1]/h];}
+function gcProjected(nrm){const [a,b]=basis(nrm),out=[];let seg=[];
+  for(let k=0;k<=360;k++){const t=k/360*2*Math.PI,p=add(mul(a,Math.cos(t)),mul(b,Math.sin(t)));
+    if(p[2]<=1e-9)seg.push(projPt(p));else if(seg.length){out.push(seg);seg=[];}}
+  if(seg.length)out.push(seg);return out;}
+function drawBall(cB,g,r){const b1=[1,0,0],b2=[0,1,0];
+  drawDisk(cB,b1,b2,r,(u,v)=>pol(schmidtDir(u,v),g));
+  gcProjected(g.d).forEach(s=>line3(s.map(([u,v])=>local(cB,b1,b2,r,u,v)),"#9ca3af",2,[6,4]));
+  gcProjected(g.n).forEach(s=>line3(s.map(([u,v])=>local(cB,b1,b2,r,u,v)),"#e8590c",3.5));
+  [[g.P,"P","#1864ab"],[g.T,"T","#c92a2a"]].forEach(([ax,t,col])=>{const [u,v]=projPt(ax),p=proj(local(cB,b1,b2,r,u,v));
+    ctx.fillStyle=col;ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(p[0],p[1],5,0,2*Math.PI);ctx.fill();ctx.stroke();
+    label(t,p[0]+12,p[1]-10,col,13);});
+}
+
+/* ---------- rendu du bloc ---------- */
+function render(){
+  useView(mainCv,108,[-0.65,0,-1.0]);
+  const g=geom(S.dip,S.rake),u=mul(g.d,OFF),B=buildFaces(g,u);
+  ctx.clearRect(0,0,W,H);
+  const faces=B.faces.filter(f=>!f.onFault||true).map(f=>({...f,z:f.pts.reduce((s,p)=>s+proj(p)[2],0)/f.pts.length})).sort((a,b)=>a.z-b.z);
+  faces.forEach(f=>drawTexFace(f,g));
+  // trace de la faille sur la face avant et en surface du mur
+  if(B.trace.length>=2){const [p,q]=B.trace,top=p[1]>q[1]?p:q;
+    line3([[p[0],Y0,p[1]],[q[0],Y0,q[1]]],"#e8590c",4);
+    line3([[top[0],Y0,top[1]],[top[0],Y1,top[1]]],"#e8590c",4);}
+
+  // ---- coupe : plan contenant la normale à la faille et le glissement ----
+  const Bn=cross(g.n,g.d), onFace=Math.abs(Bn[1])>0.7;
+  let cS,e1,e2,secLab,secLabPos;
+  if(onFace){cS=[0,Y0-0.004,ZF];e1=[1,0,0];e2=[0,0,1];secLab="coupe verticale ⊥ faille (vue vers le Nord)";secLabPos=[X0+1.0,Y0,Z0+0.15];}
+  else{cS=[X0-1.45,0,ZF];
+    if(Math.abs(Bn[2])>0.95){e1=[1,0,0];e2=[0,1,0];secLab="coupe horizontale au niveau du foyer";}
+    else{e1=norm(g.n);e2=norm(cross(Bn,g.n));secLab="coupe dans le plan (normale, glissement)";}
+    secLabPos=add(cS,[0,-DR-0.55,0]);line3([F,cS],"#444",1.5,[5,4]);}
+  drawDisk(cS,e1,e2,DR,(a,b)=>pol(norm(add(mul(e1,a),mul(e2,b))),g));
+  const inPlane=v=>{const a=dot(v,e1),b=dot(v,e2),l=Math.hypot(a,b)||1;return [a/l,b/l];};
+  const [du,dv]=inPlane(g.d),[nu,nv]=inPlane(g.n);
+  line3([local(cS,e1,e2,DR,-nu,-nv),local(cS,e1,e2,DR,nu,nv)],"#9ca3af",2,[6,4]);
+  line3([local(cS,e1,e2,DR*1.25,-du,-dv),local(cS,e1,e2,DR*1.25,du,dv)],"#e8590c",3.5);
+  if(S.rays){for(let k=0;k<32;k++){const t=k/32*2*Math.PI,a1=Math.cos(t),b1=Math.sin(t),a=amp(norm(add(mul(e1,a1),mul(e2,b1))),g);if(Math.abs(a)<0.08)continue;
+    const r0=1.06,r1=r0+0.42*Math.abs(a),fr=a>0?r0:r1,to=a>0?r1:r0;
+    arrow3(local(cS,e1,e2,DR,a1*fr,b1*fr),local(cS,e1,e2,DR,a1*to,b1*to),a>0?"#000":"#e03131",2.2,7,true);}}
+  [1,-1].forEach(sg=>{const o=[nu*0.5*sg,nv*0.5*sg],h=0.32;
+    arrow3(local(cS,e1,e2,DR,o[0]-du*h*sg,o[1]-dv*h*sg),local(cS,e1,e2,DR,o[0]+du*h*sg,o[1]+dv*h*sg),GREEN,4,12,true);});
+  // foyer
+  const FP=proj(F);ctx.fillStyle="#f59f00";ctx.strokeStyle="#000";ctx.lineWidth=1.5;ctx.beginPath();
+  for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,rr=k%2?4:10;ctx.lineTo(FP[0]+rr*Math.cos(a),FP[1]+rr*Math.sin(a));}
+  ctx.closePath();ctx.fill();ctx.stroke();
+
+  // ---- mouvement du toit (une grosse flèche verte, collée à la faille ; le mur sert de référence) ----
+  const faultX=z=>-g.n[2]*(z-ZF)/g.n[0];
+  const dp=[g.d[0],g.d[2]],L=Math.hypot(dp[0],dp[1]),nX=norm([g.n[0],0,g.n[2]]);
+  if(L>0.3){ // jeu surtout vertical : flèche sur la face avant, le long de la trace de faille, sous la coupe
+    const zA=Z0+0.3,o=add([faultX(zA)+nX[0]*0.1,Y0-0.02,zA+nX[2]*0.1],u),uu=[dp[0]/L,0,dp[1]/L],h=0.42;
+    arrow3(add(o,mul(uu,-h)),add(o,mul(uu,h)),GREEN,9,24,true);
+  }else{ // jeu surtout horizontal : flèche en surface, le long de la trace de faille
+    const x0=faultX(0)+0.14,s1=Math.sign(g.d[1]);
+    arrow3(add([x0,0.95-0.45*s1,0.02],u),add([x0,0.95+0.45*s1,0.02],u),GREEN,9,24,true);
+  }
+  // ---- ballon au-dessus de l'épicentre ----
+  const epiZ=(B.fz([0,0])>1e-6?u[2]:0), cB=[0,0,epiZ+0.75];
+  line3([[0,0,epiZ],cB],"#444",1.5,[5,4]);
+  drawBall(cB,g,DR);
+  label3("ballon (hémisphère inférieur projeté, vu de dessus)",[0,Y1-0.1,cB[2]],"#1d1d1f",12);
+
+  // ---- étiquettes ----
+  const vertical=S.dip>=85;
+  label3(vertical?"bloc Est":"toit",add([B.hangX,Y0+0.35,0.03],u),"#2b2b2b",13);
+  label3(vertical?"bloc Ouest":"mur",[B.footX,Y0+0.35,0.03],"#2b2b2b",13);
+  label3("foyer (dans le bloc)",add(F,[0,0,-0.22]),"#1d1d1f",13);
+  label3(secLab,secLabPos,"#1d1d1f",12);
+  arrow3([X1-0.35,Y1-0.8,0.02],[X1-0.35,Y1-0.2,0.02],"#c2410c",2.5,9,true);label3("N",[X1-0.35,Y1-0.02,0.02],"#c2410c",13);
+  label3("O",[X0-0.2,Y0,ZF+0.6],"#555",13);label3("E",[X1+0.22,Y0,ZF],"#555",13);
+  renderMini(g);
+}
+
+/* ---------- petite maquette : de l'hémisphère au ballon ---------- */
+function renderMini(g){
+  useView(miniCv,95,[0,0,0.35]);ctx.clearRect(0,0,W,H);
+  const HZ=1.35, C=proj([0,0,0]),R=SC, L=norm([-0.45,0.55,0.75]);
+  // cuvette = hémisphère inférieur (faces extérieure et intérieure)
+  const w=Math.ceil(2*R)+4,x0=Math.floor(C[0]-R)-2,y0=Math.floor(C[1]-R)-2,id=octx.createImageData(w,w),D=id.data;
+  for(let j=0;j<w;j++)for(let i=0;i<w;i++){
+    const sx=(x0+i+.5-C[0])/R,sy=-(y0+j+.5-C[1])/R,q=sx*sx+sy*sy;if(q>1)continue;
+    const st=Math.sqrt(1-q);let dir=toWorld([sx,sy,st]),inner=false;
+    if(dir[2]>0){dir=toWorld([sx,sy,-st]);inner=true;if(dir[2]>0)continue;}
+    const sh=inner?0.72:0.8+0.2*Math.max(0,sx*L[0]+sy*L[1]+st*L[2]),c=amp(dir,g)>0?20:255*sh,k=(j*w+i)*4;
+    D[k]=D[k+1]=D[k+2]=c;D[k+3]=Math.min(1,(1-Math.sqrt(q))*R)*255;}
+  off.width=w;off.height=w;octx.putImageData(id,0,0);ctx.drawImage(off,x0,y0);
+  ringLine([0,0,0],[1,0,0],[0,1,0],1,"#000",2);
+  // rayons de projection : chaque point de la cuvette monte vers sa place dans le ballon
+  for(let k=0;k<12;k++){const ph=k/12*2*Math.PI;[90,50].forEach(id2=>{const i=id2*D2R,p=[Math.sin(i)*Math.cos(ph),Math.sin(i)*Math.sin(ph),-Math.cos(i)];
+    const [u,v]=projPt(p);line3([p,[u,v,HZ]],"rgba(30,100,200,.55)",1.3,[4,3]);
+    const P=proj(p);ctx.fillStyle="#1864ab";ctx.beginPath();ctx.arc(P[0],P[1],2.5,0,2*Math.PI);ctx.fill();});}
+  const P0=proj([0,0,-1]);line3([[0,0,-1],[0,0,HZ]],"rgba(30,100,200,.8)",1.6,[4,3]);
+  ctx.fillStyle="#1864ab";ctx.beginPath();ctx.arc(P0[0],P0[1],3.5,0,2*Math.PI);ctx.fill();
+  drawBall([0,0,HZ],g,1);
+  label3("ballon vu de dessus",[0,-1.25,HZ+0.15],"#1d1d1f",13);
+  label3("hémisphère inférieur",[0,-1.15,-0.8],"#1d1d1f",13);
+  label3("(sphère autour du foyer)",[0,-1.15,-1.05],"#666",11,false);
+  arrow3([1.15,0.3,HZ],[1.15,0.95,HZ],"#c2410c",2,8,true);label3("N",[1.15,1.1,HZ],"#c2410c",12);
+}
+
+/* ---------- textes ---------- */
+function typeOf(dip,rake){const a=Math.abs(rake);if(a<=20||a>=160)return "decro";return rake<0?"normale":"inverse";}
+const TXT={
+  normale:"<b>Faille normale (extension).</b> Le toit descend le long de la faille et les blocs s'écartent. L'axe T est horizontal et perpendiculaire à la faille ; l'axe P est vertical. <b>Ballon : centre blanc</b>, car les stations à l'aplomb du foyer enregistrent une traction ; les côtés sont noirs.",
+  inverse:"<b>Faille inverse (compression).</b> Le toit monte le long de la faille et les blocs se rapprochent. L'axe P est horizontal et perpendiculaire à la faille ; l'axe T est vertical. <b>Ballon : centre noir</b>, côtés blancs. Le glissement est opposé à celui de la faille normale, donc toutes les polarités sont inversées.",
+  decro:"<b>Décrochement (coulissage horizontal).</b> Les blocs glissent horizontalement l'un contre l'autre ; dans la coupe, le mouvement sort du plan (⊙ vers toi, ⊗ vers le Nord). Les axes P et T sont <b>horizontaux</b>, à 45° des deux plans nodaux verticaux. <b>Ballon en croix</b> : 4 quadrants alternés qui se rejoignent au centre. Dans la coupe, le plan auxiliaire est le plan de coupe lui-même : il n'apparaît donc pas comme une ligne."
+};
+function update(){
+  document.getElementById("dipv").textContent=S.dip+"°";
+  document.getElementById("rakev").textContent=S.rake+"°";
+  render();
+  const k=typeOf(S.dip,S.rake),r=Math.abs(S.rake);
+  const oblique=!(Math.abs(r-90)<3||r<3||Math.abs(r-180)<3);
+  document.getElementById("explain").innerHTML=TXT[k]+(oblique?" <i>(Ici le glissement est oblique : c'est un mécanisme intermédiaire.)</i>":"")+
+   "<br><br><b>Ce qu'il faut voir :</b> la sphère, la coupe et le ballon montrent le même découpage en quadrants. La coupe est une tranche verticale de la sphère ; le ballon est l'hémisphère inférieur de la sphère aplati sur une carte (canevas de Schmidt). Le centre du ballon correspond au rai qui part tout droit vers le bas, et son bord aux rais horizontaux.<br><br><b>Ambiguïté :</b> si l'on échange le plan de faille et le plan auxiliaire, on obtient exactement le même ballon. Les ondes P seules ne permettent donc pas de savoir quel plan a joué ; on tranche avec la géologie (failles connues) ou l'alignement des répliques.";
+  document.querySelectorAll("#presets button").forEach(b=>b.classList.toggle("on",b.dataset.k===S.key));
+  document.querySelectorAll(".mini").forEach(m=>m.classList.toggle("on",m.dataset.k===S.key));
+}
+function setPreset(k){S.key=k;S.dip=PRESETS[k].dip;S.rake=PRESETS[k].rake;
+  document.getElementById("dip").value=S.dip;document.getElementById("rake").value=S.rake;update();}
+
+document.querySelectorAll("#presets button").forEach(b=>b.onclick=()=>setPreset(b.dataset.k));
+document.getElementById("rays").onchange=e=>{S.rays=e.target.checked;render();};
+["dip","rake"].forEach(id=>document.getElementById(id).oninput=e=>{S[id]=+e.target.value;S.key=null;update();});
+
+// mini ballons pour comparer
+function miniBall(c,g){const x=c.getContext("2d"),w=c.width,C=w/2,R=w*0.44,id=x.createImageData(w,w),D=id.data;
+  for(let j=0;j<w;j++)for(let i=0;i<w;i++){const u=(i+.5-C)/R,v=-(j+.5-C)/R,q=Math.hypot(u,v);if(q>1)continue;
+    const col=pol(schmidtDir(u,v),g),k=(j*w+i)*4;D[k]=col[0];D[k+1]=col[1];D[k+2]=col[2];D[k+3]=Math.min(1,(1-q)*R)*255;}
+  x.putImageData(id,0,0);x.strokeStyle="#000";x.lineWidth=1.5;x.beginPath();x.arc(C,C,R,0,2*Math.PI);x.stroke();
+  [[g.d,"#9ca3af",[5,4],1.5],[g.n,"#e8590c",[],2.5]].forEach(([m,col,dash,lw])=>{x.strokeStyle=col;x.lineWidth=lw;x.setLineDash(dash);
+    gcProjected(m).forEach(s=>{x.beginPath();s.forEach(([u,v],i)=>i?x.lineTo(C+u*R,C-v*R):x.moveTo(C+u*R,C-v*R));x.stroke();});x.setLineDash([]);});}
+const cmp=document.getElementById("compare");
+Object.entries(PRESETS).forEach(([k,p])=>{
+  const d=document.createElement("div");d.className="mini";d.dataset.k=k;
+  const c=document.createElement("canvas");c.width=180;c.height=180;d.appendChild(c);
+  const t=document.createElement("div");t.textContent=p.nom;d.appendChild(t);
+  d.onclick=()=>setPreset(k);cmp.appendChild(d);miniBall(c,geom(p.dip,p.rake));
+});
+
+// rotation (les deux modèles tournent ensemble)
+[mainCv,miniCv].forEach(cv=>{let drag=null;
+  cv.addEventListener("pointerdown",e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);cv.style.cursor="grabbing";});
+  cv.addEventListener("pointermove",e=>{if(!drag)return;
+    S.yaw=Math.max(-75*D2R,Math.min(75*D2R,S.yaw+(e.clientX-drag[0])*0.01));
+    S.pitch=Math.max(6*D2R,Math.min(80*D2R,S.pitch+(e.clientY-drag[1])*0.01));
+    drag=[e.clientX,e.clientY];render();});
+  cv.addEventListener("pointerup",()=>{drag=null;cv.style.cursor="grab";});});
+
+setPreset("normale");
+</script>
+</body>
+</html>
